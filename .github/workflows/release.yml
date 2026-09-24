@@ -1,7 +1,9 @@
 name: Release
 
-# Push a tag like v0.3.0 (matching package.json's version) to publish to npm.
-# Uses npm Trusted Publishing: no token, and the package gets a provenance attestation.
+# Push a tag like v0.3.0 (matching package.json's version) to stage a release on npm.
+# Uses npm Trusted Publishing (no token; provenance is added automatically) in
+# stage-only mode: the version goes live only after a maintainer approves it
+# with 2FA, on npmjs.com (Staged Packages tab) or with `npm stage approve <id>`.
 on:
   push:
     tags: ["v*"]
@@ -34,6 +36,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      # Trusted Publishing needs npm 11.5.1 or later
+      # Staged publishing needs npm 11.15.0 or later
       - run: npm install -g npm@latest
-      - run: npm publish --provenance --access public
+      - run: npm stage publish

@@ -139,6 +139,10 @@ Browser profiles don't share site logins, so browser work in a second subscripti
 
 Only use planhop with subscriptions that are yours. Check [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and [Usage Policy](https://www.anthropic.com/legal/aup) for what they allow.
 
+## Releasing
+
+Bump `version` in `package.json`, commit, and push a matching tag (`git tag v0.3.0 && git push --tags`). The release workflow checks the tag, runs lint, typecheck and tests, and stages the version on npm through Trusted Publishing. It goes live once a maintainer approves it with 2FA on npmjs.com (Staged Packages) or with `npm stage approve <id>`. Then `pnpm bump-tap` points the Homebrew formula at it.
+
 ## Development
 
 ```sh
