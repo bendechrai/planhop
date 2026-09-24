@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>planhop</title>
+<meta name="description" content="planhop launches Claude Code on whichever of your subscriptions will lose quota soonest, with one shared config, history and set of sessions.">
+<link rel="canonical" href="https://bendechrai.github.io/planhop/">
+<meta name="theme-color" content="#eef1f4">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="planhop">
+<meta property="og:url" content="https://bendechrai.github.io/planhop/">
+<meta property="og:title" content="planhop: spend the quota that expires first">
+<meta property="og:description" content="Run Claude Code on whichever of your subscriptions will lose quota soonest, with one shared config, history and set of sessions.">
+<meta property="og:image" content="https://bendechrai.github.io/planhop/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="planhop: a timeline of two subscriptions, using the one whose weekly quota resets first, then hopping to the other.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="planhop: spend the quota that expires first">
+<meta name="twitter:description" content="Run Claude Code on whichever of your subscriptions will lose quota soonest.">
+<meta name="twitter:image" content="https://bendechrai.github.io/planhop/og.png">
+<meta name="twitter:image:alt" content="planhop: a timeline of two subscriptions, using the one whose weekly quota resets first, then hopping to the other.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 22h9l6-12h9' fill='none' stroke='%232f6fdb' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #eef1f4;
+    --panel: #e2e7ec;
+    --ink: #16212e;
+    --muted: #536273;
+    --rule: #c6d0da;
+    --a: #2f6fdb;
+    --b: #8e3b8f;
+    --code-bg: #16212e;
+    --code-ink: #dfe7ef;
+    --measure: 40rem;
+    --wide: 60rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1822;
+      --panel: #17222e;
+      --ink: #e4eaf0;
+      --muted: #97a6b6;
+      --rule: #2a3847;
+      --a: #6f9ff0;
+      --b: #cc7acd;
+      --code-bg: #07101a;
+      --code-ink: #dfe7ef;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1.0625rem/1.55 "Familjen Grotesk", system-ui, sans-serif;
+    font-kerning: normal;
+  }
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+  a:hover { color: var(--a); }
+  :focus-visible { outline: 2px solid var(--a); outline-offset: 3px; border-radius: 2px; }
+
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 1.25rem; }
+  .text { max-width: var(--measure); }
+
+  header.top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 1.5rem 0;
+  }
+  .wordmark { font-weight: 700; font-size: 1.25rem; letter-spacing: -0.01em; text-decoration: none; }
+  .top nav a { margin-left: 1.25rem; color: var(--muted); }
+
+  .hero { padding: 3.5rem 0 1rem; }
+  h1 {
+    font-size: clamp(2.6rem, 7vw, 4.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+    margin: 0 0 1.5rem;
+    max-width: 13ch;
+  }
+  .lede { font-size: 1.3rem; line-height: 1.45; color: var(--muted); margin: 0 0 2rem; }
+  .lede strong { color: var(--ink); font-weight: 500; }
+
+  .install { display: grid; gap: 0.5rem; margin: 0 0 1rem; max-width: 34rem; }
+  .cmd {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 6px; padding: 0.7rem 0.6rem 0.7rem 1rem;
+    font: 400 0.95rem/1.4 "JetBrains Mono", ui-monospace, monospace;
+  }
+  .cmd code { overflow-x: auto; white-space: nowrap; }
+  .cmd code::before { content: "$ "; opacity: 0.45; }
+  .copy {
+    font: 500 0.85rem/1 "Familjen Grotesk", system-ui, sans-serif;
+    color: var(--code-ink); background: transparent;
+    border: 1px solid rgba(223, 231, 239, 0.3); border-radius: 4px;
+    padding: 0.45rem 0.65rem; cursor: pointer; flex: none;
+  }
+  .copy:hover { border-color: var(--code-ink); }
+  .fine { color: var(--muted); font-size: 0.95rem; margin: 0; }
+
+  /* The timeline */
+  figure.plan { margin: 3rem 0 1rem; }
+  .plan svg { width: 100%; display: block; overflow: visible; touch-action: pan-y; }
+  .plan .axis { stroke: var(--rule); stroke-width: 1; }
+  .plan .tick { fill: var(--muted); font: 500 13px "Familjen Grotesk", sans-serif; }
+  .plan .lane-label { font: 600 17px "Familjen Grotesk", sans-serif; }
+  .plan .lane-note { fill: var(--muted); font: 400 14px "Familjen Grotesk", sans-serif; }
+  .plan .handle { cursor: ew-resize; touch-action: none; outline: none; }
+  .plan .handle .hit { fill: transparent; }
+  .plan .handle:hover circle, .plan .handle:focus-visible circle { r: 9; }
+  .plan .handle:focus-visible .hit { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 3; rx: 4; }
+  .plan .now { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 4; }
+  .plan figcaption { color: var(--ink); max-width: none; margin-top: 0.75rem; font-size: 1.02rem; min-height: 3em; }
+
+  .scenario { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem 2.5rem; }
+  details.scenario-toggle { margin: 1.25rem 0 0.75rem; }
+  details.scenario-toggle .howto-body { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .ctl-wide { grid-column: 1 / -1; }
+  .ctl label, .ctl-label { display: block; font-size: 0.95rem; font-weight: 600; white-space: nowrap; }
+  .ctl input[type=range] { width: 100%; accent-color: var(--ink); margin: 0.5rem 0 0; }
+  .ends { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--muted); }
+  .advice { display: block; color: var(--muted); font-size: 0.92rem; margin-top: 0.35rem; font-variant-numeric: tabular-nums; }
+  .chart-wrap { position: relative; }
+  .chart-zones { position: absolute; inset: 0; pointer-events: none; }
+  .zone { position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(10, 16, 24, 0.38); opacity: 0; transition: opacity 0.15s; }
+  .zone.on, .zone:has(.zone-btn:focus-visible) { opacity: 1; }
+  .zone.on { pointer-events: auto; cursor: pointer; }
+  .zone-btn { pointer-events: none; flex: none; width: var(--btn, 42px); height: var(--btn, 42px); padding: 0; border-radius: 50%; border: 0; background: #fff; color: #16212e; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3); }
+  .zone-btn:focus-visible { pointer-events: auto; outline: 3px solid #fff; outline-offset: 3px; }
+  .zone-btn svg { width: 55%; height: 55%; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+  .zone-btn:disabled { opacity: 0.4; cursor: default; }
+  @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
+  .disclaimer { margin: 0; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+  .chart-tip {
+    position: absolute; z-index: 5; left: 12rem; bottom: calc(100% + 0.5rem); max-width: 22rem;
+    background: var(--ink); color: var(--paper); border-radius: 10px; padding: 0.7rem 2.4rem 0.75rem 0.95rem;
+    font-size: 0.95rem; line-height: 1.4; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  }
+  .chart-tip[hidden] { display: none; }
+  .chart-tip p { margin: 0; }
+  .chart-tip::after {
+    content: ""; position: absolute; left: 1.5rem; top: 100%;
+    border: 9px solid transparent; border-top-color: var(--ink);
+  }
+  .chart-tip-close { position: absolute; top: 0.45rem; right: 0.5rem; width: 1.6rem; height: 1.6rem; border: 0; border-radius: 50%; background: transparent; color: var(--paper); font: 600 0.9rem "Familjen Grotesk", sans-serif; cursor: pointer; opacity: 0.75; }
+  .chart-tip-close:hover { opacity: 1; }
+  .chart-tip-close:focus-visible { outline-color: var(--paper); }
+  @media (prefers-reduced-motion: no-preference) {
+    .chart-tip:not([hidden]) { animation: tip-in 0.4s 0.6s both; }
+    @keyframes tip-in { from { opacity: 0; transform: translateY(6px); } }
+  }
+  figure.plan:has(.chart-tip:not([hidden])) { margin-top: 6.5rem; }
+  @media (max-width: 720px) {
+    .chart-tip { left: 0; right: 0; max-width: none; }
+    figure.plan:has(.chart-tip:not([hidden])) { margin-top: 8rem; }
+  }
+  .plan .workday { fill: var(--ink); opacity: 0.035; }
+  .plan .run { stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+  .plan .link { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; opacity: 0.75; }
+  .plan .knob { fill: var(--paper); stroke-width: 2.5; }
+  .plan .lane-label { paint-order: stroke; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; }
+  .plan .lane-label.tiny { font-size: 13px; }
+  .plan .lane-label.tiny .lane-note { font-size: 12px; }
+
+  .steve {
+    position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 10; width: 15rem;
+    background: #fff6cf; color: #16212e; border: 3px solid #16212e; border-radius: 18px;
+    box-shadow: 6px 6px 0 #16212e; padding: 1rem 1.1rem 1rem 5rem; transform: rotate(-3deg);
+  }
+  .steve[hidden] { display: none; }
+  .steve-face { position: absolute; left: 0.6rem; top: 50%; width: 3.9rem; height: 3.9rem; margin-top: -2rem; }
+  .steve-hi { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1; margin: 0 0 0.3rem; }
+  .steve-sub { margin: 0; font-size: 0.95rem; }
+  .steve-close { position: absolute; top: -0.9rem; right: -0.9rem; width: 2rem; height: 2rem; border-radius: 50%; border: 3px solid #16212e; background: #ffd84d; color: #16212e; font: 700 0.9rem "Familjen Grotesk", sans-serif; cursor: pointer; }
+  @media (prefers-reduced-motion: no-preference) {
+    .steve { animation: steve-in 0.5s cubic-bezier(.3,1.6,.5,1) both, steve-bob 3s 0.5s ease-in-out infinite; }
+    .steve-hand { transform-origin: 52px 22px; animation: wave 0.9s ease-in-out 3; }
+    @keyframes steve-in { from { transform: translateY(140%) rotate(8deg); } to { transform: translateY(0) rotate(-3deg); } }
+    @keyframes steve-bob { 50% { transform: translateY(-8px) rotate(-1.5deg); } }
+    @keyframes wave { 50% { transform: rotate(18deg); } }
+  }
+
+  section { padding: 3.5rem 0 0; }
+  h2 { font-size: 1.75rem; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 1rem; font-weight: 700; }
+  h3 { font-size: 1.1rem; margin: 0 0 0.35rem; font-weight: 600; }
+  p { margin: 0 0 1rem; }
+
+  ol.rules { list-style: none; counter-reset: r; padding: 0; margin: 1.5rem 0 0; }
+  ol.rules li { counter-increment: r; display: grid; grid-template-columns: 2.25rem 1fr; padding: 0 0 1.25rem; }
+  ol.rules li::before {
+    content: counter(r); font-weight: 700; font-size: 1.1rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    display: grid; place-items: center; border: 1.5px solid var(--ink); line-height: 1;
+  }
+  ol.rules p { margin: 0; color: var(--muted); }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem; }
+  .split ul { margin: 0; padding-left: 1.1rem; }
+  .split li { margin-bottom: 0.35rem; }
+  .split .lane { border-top: 3px solid var(--a); padding-top: 0.9rem; }
+  .split .lane.own { border-top-color: var(--b); }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 6px; padding: 1.1rem 1.25rem; overflow-x: auto;
+    font: 400 0.9rem/1.6 "JetBrains Mono", ui-monospace, monospace;
+    margin: 0 0 1rem;
+  }
+  pre .c { color: #8b9bab; }
+  code.inline { font: 400 0.92em "JetBrains Mono", ui-monospace, monospace; background: var(--panel); padding: 0.1em 0.35em; border-radius: 3px; }
+
+  .notes { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem; }
+  .notes p { color: var(--muted); }
+  .notes .steps { color: var(--muted); margin: 0 0 0.9rem; padding-left: 1.2rem; }
+  details.howto { margin: -0.25rem 0 1rem; }
+  details.howto summary {
+    display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; list-style: none;
+    font-weight: 600; color: var(--a); padding: 0.3rem 0.75rem 0.3rem 0.85rem; margin-left: -0.85rem;
+    border-radius: 999px; transition: background-color 0.15s;
+  }
+  details.howto summary::-webkit-details-marker { display: none; }
+  details.howto summary:hover { background: color-mix(in srgb, var(--a) 12%, transparent); }
+  details.howto[open] summary { background: color-mix(in srgb, var(--a) 16%, transparent); }
+  details.howto .chev { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s; }
+  details.howto[open] .chev { transform: rotate(90deg); }
+  .howto-body { margin-top: 0.75rem; padding-left: 1rem; border-left: 3px solid var(--a); }
+  .howto-body p { margin-bottom: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    details.howto[open] .howto-body { animation: howto-in 0.25s ease-out; }
+    @keyframes howto-in { from { opacity: 0; transform: translateY(-6px); } }
+  }
+  @media (prefers-reduced-motion: reduce) { details.howto .chev, details.howto summary { transition: none; } }
+  .notes .steps li { margin-bottom: 0.4rem; padding-left: 0.2rem; }
+
+  footer { margin: 5rem 0 0; padding: 2rem 0 3rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.92rem; }
+  footer p { max-width: none; margin: 0; }
+
+  @media (max-width: 720px) {
+    .scenario { grid-template-columns: 1fr; }
+    .split, .notes { grid-template-columns: 1fr; gap: 1.5rem; }
+    .hero { padding-top: 2rem; }
+    .lede { font-size: 1.15rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="wordmark" href="./">planhop</a>
+    <nav><a href="https://github.com/bendechrai/planhop">GitHub</a><a href="https://www.npmjs.com/package/planhop">npm</a></nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>Spend the quota that expires first.</h1>
+      <div class="text">
+        <p class="lede">If you pay for more than one Claude subscription, each one's weekly quota resets on its own schedule. <strong>planhop launches Claude Code on whichever account would lose quota soonest</strong>, and every account shares one config, one history and one set of sessions.</p>
+      </div>
+      <div class="install">
+        <div class="cmd"><code>npm install -g planhop</code><button class="copy" type="button" data-copy="npm install -g planhop">Copy</button></div>
+        <div class="cmd"><code>brew install bendechrai/tap/planhop</code><button class="copy" type="button" data-copy="brew install bendechrai/tap/planhop">Copy</button></div>
+      </div>
+      <p class="fine">macOS and Linux. Needs Node.js 20 or later and Claude Code.</p>
+    </div>
+
+    <figure class="plan" aria-labelledby="plan-caption">
+      <div class="chart-wrap">
+        <div id="chart-tip" class="chart-tip" role="note" hidden>
+          <p>Hover over the chart to add or remove subscriptions, or drag a marker to change when a week resets.</p>
+          <button type="button" id="chart-tip-close" class="chart-tip-close" aria-label="Dismiss tip">x</button>
+        </div>
+        <svg id="plan-svg" role="group" aria-label="Timeline of your subscriptions over the next two weeks: when each is in use, its 5-hour windows, and its weekly resets. Drag or arrow-key the reset markers to move each weekly reset."></svg>
+        <div id="chart-zones" class="chart-zones"></div>
+      </div>
+      <noscript><p>With two subscriptions whose weeks reset at different times, planhop runs Claude Code on the one that resets first, then hops to the other.</p></noscript>
+      <figcaption id="plan-caption" aria-live="polite"></figcaption>
+      <details class="howto scenario-toggle">
+        <summary><span>Visualise your setup</span><svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg></summary>
+        <div class="howto-body scenario" aria-label="Scenario controls" role="group">
+        <div class="ctl">
+          <label for="in-rate">How heavily you use Claude Code</label>
+          <input type="range" id="in-rate" min="0" max="100" step="1" aria-describedby="out-rate">
+          <div class="ends" aria-hidden="true"><span>Light</span><span>Software factory</span></div>
+          <output id="out-rate" for="in-rate" class="advice"></output>
+        </div>
+        <div class="ctl">
+          <label for="in-day">Hours in use per day</label>
+          <input type="range" id="in-day" min="1" max="24" step="1" aria-describedby="out-day">
+          <div class="ends" aria-hidden="true"><span>1h</span><span>24h</span></div>
+          <output id="out-day" for="in-day" class="advice"></output>
+        </div>
+
+        </div>
+      </details>
+      <p class="disclaimer">This is an indicative model with made-up numbers: it assumes a full 5-hour window is about an eighth of a week's quota, and that each day's use starts now.</p>
+    </figure>
+
+    <section aria-labelledby="picks">
+      <div class="text">
+        <h2 id="picks">How it picks an account</h2>
+        <p>You only use one account at a time, so planhop works through them in the order their quota expires. Each time you start Claude Code with <code class="inline">planhop run</code> (or plain <code class="inline">claude</code>, once you've <a href="#shim">installed the shim</a>), it checks every account's usage and applies these rules in order.</p>
+      </div>
+      <ol class="rules text">
+        <li><div><h3>Skip anything at its limit</h3><p>An account at 100% of its 5-hour or weekly limit is passed over. If every account is at a limit, planhop uses the one that frees up soonest.</p></div></li>
+        <li><div><h3>Take the soonest weekly reset</h3><p>Quota on that account is the next to be lost. An account whose week hasn't started goes last, because nothing on it is expiring yet.</p></div></li>
+        <li><div><h3>Break close calls on the 5-hour window</h3><p>If two weekly resets are within 6 hours of each other, planhop prefers the account with more 5-hour quota about to expire unused.</p></div></li>
+      </ol>
+      <div class="text">
+        <p>Checking usage doesn't cost any quota or start a 5-hour window. If a session hits a limit, quit and start again with <code class="inline">planhop run -c</code> (or <code class="inline">claude -c</code> with the shim): planhop moves you to the next account and the conversation carries on.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="shared">
+      <div class="text">
+        <h2 id="shared">One setup, several logins</h2>
+        <p>Each account keeps its own login, so the Chrome extension and claude.ai connectors keep working. Everything else is shared with your existing <code class="inline">~/.claude</code>.</p>
+      </div>
+      <div class="split">
+        <div class="lane">
+          <h3>Shared across accounts</h3>
+          <ul>
+            <li>Settings, <code class="inline">CLAUDE.md</code> and permissions</li>
+            <li>Sessions and transcripts, so <code class="inline">--resume</code> finds all of them</li>
+            <li>Prompt history</li>
+            <li>Skills, agents, plugins and hooks</li>
+            <li>MCP servers: add or remove one on any account and every account gets the change</li>
+          </ul>
+        </div>
+        <div class="lane own">
+          <h3>Kept per account</h3>
+          <ul>
+            <li>The login itself</li>
+            <li>claude.ai connectors, which belong to each claude.ai account</li>
+            <li>Browser sign-ins for MCP servers</li>
+            <li>Caches and telemetry</li>
+          </ul>
+        </div>
+      </div>
+      <div class="text">
+        <p class="fine">Want something kept per account instead? List it under <code class="inline">keepSeparate</code> in planhop's config (<a href="https://github.com/bendechrai/planhop#how-accounts-share-everything">how</a>). And planhop never deletes your files: if an account already has its own copy of something shared, it asks which to keep and moves the other aside.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="setup">
+      <div class="text">
+        <h2 id="setup">Set it up</h2>
+        <p>Register the account you already use, add the others and log them in, then start Claude Code with <code class="inline">planhop run</code>. It takes the same arguments as <code class="inline">claude</code>.</p>
+      </div>
+<pre><code>planhop add a ~/.claude            <span class="c"># the subscription you're logged into now</span>
+planhop add b                      <span class="c"># creates ~/.claude-b</span>
+planhop login b                    <span class="c"># opens your browser to log B in</span>
+planhop status                     <span class="c"># usage per account, and which one is next</span>
+planhop run                        <span class="c"># starts Claude Code on the account planhop picks</span></code></pre>
+      <div class="text">
+        <p id="shim">Installing planhop doesn't change what <code class="inline">claude</code> does. To keep typing <code class="inline">claude</code> and have it go through planhop, run <code class="inline">planhop shim</code>: it writes a small <code class="inline">claude</code> command to <code class="inline">~/.local/share/planhop/bin</code> and prints the <code class="inline">PATH</code> line to add so that command comes first.</p>
+        <p>Then check which account each session is on in Claude Code's status bar, along with that account's own 5-hour and weekly usage:</p>
+      </div>
+<pre><code>{ "statusLine": { "type": "command", "command": "planhop statusline" } }</code></pre>
+      <div class="text">
+        <p class="fine">Already have a statusline script? <code class="inline">planhop statusline --wrap '&lt;your command&gt;'</code> puts the account in front of it. The <a href="https://github.com/bendechrai/planhop#readme">README</a> covers the rest.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="know">
+      <div class="text"><h2 id="know">Good to know</h2></div>
+      <div class="notes">
+        <div>
+          <h3>The Chrome extension</h3>
+          <p>The extension only works with Claude Code sessions logged into the same account as it. To use the browser from more than one subscription, give each one its own browser profile.</p>
+          <details class="howto">
+            <summary><span>How to set it up</span><svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg></summary>
+            <div class="howto-body">
+                <ol class="steps">
+                <li>Create a browser profile for each subscription (in Chrome or Brave, click your profile picture, then Add).</li>
+                <li>Install the Claude in Chrome extension in each profile, and sign each one in with its own subscription's claude.ai account.</li>
+                <li>Keep those profiles open. Each session finds the extension signed into its account; if one connects to the wrong browser, run <code class="inline">/chrome</code> and choose Select browser.</li>
+              </ol>
+              <p>Profiles don't share site logins, so sign in to the sites you need in each one. <a href="https://code.claude.com/docs/en/chrome">Anthropic's Chrome docs</a> cover installing the extension.</p>
+            </div>
+          </details>
+        </div>
+        <div>
+          <h3>Idle accounts</h3>
+          <p>A stored login only renews while Claude Code is running on that account. For an idle account, planhop uses the last reading it saved, which stays accurate unless you've used that account in the claude.ai apps since.</p>
+        </div>
+        <div>
+          <h3>Undocumented internals</h3>
+          <p>planhop reads usage the way Claude Code's <code class="inline">/usage</code> does, which isn't a documented interface. If a Claude Code release changes it, planhop falls back to saved readings and then to your first account.</p>
+        </div>
+        <div>
+          <h3>Your own accounts only</h3>
+          <p>planhop is for people who pay for more than one subscription themselves. Check Anthropic's <a href="https://www.anthropic.com/legal/consumer-terms">Consumer Terms</a> and <a href="https://www.anthropic.com/legal/aup">Usage Policy</a> for what they allow.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 <a href="https://github.com/bendechrai">Ben Dechrai</a>. planhop is an independent open source project, released under the MIT license. It is not made by, affiliated with, or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic.</p>
+  </footer>
+</div>
+  <div id="steve" class="steve" role="status" hidden>
+    <svg class="steve-face" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="34" r="22" fill="#ffd84d" stroke="#16212e" stroke-width="3"/>
+      <circle cx="24" cy="30" r="3" fill="#16212e"/><circle cx="40" cy="30" r="3" fill="#16212e"/>
+      <path d="M22 40 Q32 50 42 40" fill="none" stroke="#16212e" stroke-width="3" stroke-linecap="round"/>
+      <g class="steve-hand"><path d="M52 14 l4 -8 M57 18 l7 -5 M58 24 l7 -1" stroke="#16212e" stroke-width="3" stroke-linecap="round"/></g>
+    </svg>
+    <p class="steve-hi">Hi Steve!</p>
+    <p class="steve-sub">21 subscriptions. Respect.</p>
+    <button type="button" id="steve-close" class="steve-close" aria-label="Close">x</button>
+  </div>
+<script src="choose.js"></script>
+<script src="sim.js"></script>
+<script src="scenario.js"></script>
+<script>
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy");
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy"; }, 1600);
+      }, function () {
+        btn.textContent = "Select and copy";
+      });
+    });
+  });
+</script>
+</body>
+</html>

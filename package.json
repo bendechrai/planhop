@@ -1,0 +1,54 @@
+{
+  "name": "planhop",
+  "version": "0.2.0",
+  "description": "Run Claude Code on whichever of your subscriptions has quota closest to expiring, with shared config and sessions",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "pnpm run docs",
+    "bump-tap": "scripts/bump-tap.sh",
+    "docs": "pnpm build && node scripts/docs.mjs",
+    "docs:serve": "python3 -m http.server 8765 --bind 127.0.0.1 --directory docs"
+  },
+  "keywords": [
+    "claude-code",
+    "cli",
+    "subscription",
+    "usage",
+    "quota"
+  ],
+  "author": "Ben Dechrai <ben@dechrai.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.2",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.1"
+  },
+  "type": "module",
+  "bin": {
+    "planhop": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bendechrai/planhop.git"
+  },
+  "homepage": "https://bendechrai.github.io/planhop"
+}
