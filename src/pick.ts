@@ -1,8 +1,8 @@
-import { readSync } from "node:fs";
 import { choose, fmtHours, pct, score } from "./choose.js";
 import { listAccounts, loadConfig, type Config } from "./config.js";
 import { accountEmail } from "./credentials.js";
 import { isDefaultDir, type Env } from "./paths.js";
+import { ask } from "./prompt.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks, syncMcp, type Ask, type Conflict } from "./share.js";
 import { gatherUsage } from "./usage.js";
 
@@ -21,26 +21,13 @@ export interface Pick {
 
 /** Ask on the terminal which copy to share; skip when there's no terminal to ask on. */
 export const askOnTerminal: Ask = (c: Conflict) => {
-  if (!process.stdin.isTTY || !process.stderr.isTTY) return "skip";
-  process.stderr.write(
+  const answer = ask(
     `\n[planhop] ${c.local} is a separate copy of ${c.shared}, so this account isn't sharing it.\n` +
       `  1) share ${c.shared} (this account's copy is moved aside, not deleted)\n` +
       `  2) share this account's copy (the current shared one is moved aside, not deleted)\n` +
       `  3) leave both as they are for now\n` +
       `Choose [3]: `,
   );
-  const buf = Buffer.alloc(64);
-  let line = "";
-  try {
-    while (!line.includes("\n")) {
-      const n = readSync(0, buf, 0, buf.length, null);
-      if (n <= 0) break;
-      line += buf.subarray(0, n).toString("utf8");
-    }
-  } catch {
-    return "skip";
-  }
-  const answer = line.trim();
   return answer === "1" ? "shared" : answer === "2" ? "local" : "skip";
 };
 

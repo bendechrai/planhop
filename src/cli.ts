@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { choose, fmtHours, score } from "./choose.js";
 import { hasAccount, isValidAccountName, listAccounts, loadConfig, saveConfig } from "./config.js";
@@ -9,6 +9,8 @@ import { collapseHome, defaultClaudeDir, home, isDefaultDir, normalizeDir } from
 import { askOnTerminal, pick } from "./pick.js";
 import { findRealClaude, SHIM_MARKER } from "./realbin.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks } from "./share.js";
+import { canAsk, ask } from "./prompt.js";
+import { BEGIN, detectRc, END, installRcBlock, removeRcBlock } from "./rc.js";
 import { pickShell, shimScript } from "./shell.js";
 import { refresh, renderStatusline } from "./statusline.js";
 import { formatTable } from "./table.js";
@@ -23,8 +25,10 @@ Usage:
   planhop remove <name>        unregister an account (its folder is left alone)
   planhop status               usage per account, and which one would be picked
   planhop run [claude args]    launch Claude Code on the picked account
-  planhop shim [dir]           install a \`claude\` command that runs \`planhop run\`
-                               (default dir ~/.local/share/planhop/bin)
+  planhop shim [--yes]         make plain \`claude\` go through planhop: writes
+                               ~/.local/share/planhop/bin/claude and (after asking)
+                               adds it to your shell's startup file
+  planhop shim --remove        undo that
   planhop statusline [--wrap "<cmd>"] [--usage-app-compat]
                                statusline command for Claude Code settings.json
 
@@ -151,18 +155,64 @@ function cmdLogin(name: string | undefined): void {
   runClaude(["auth", "login"], childEnv(account.dir, account.name));
 }
 
-function cmdShim(dirArg: string | undefined): void {
+function verifyShim(file: string): void {
+  const shell = process.env.SHELL;
+  if (!shell) return;
+  // Start a shell the way a new terminal would: macOS terminal apps open login
+  // shells (bash reads ~/.bash_profile, zsh also runs ~/.zprofile and ~/.zlogin),
+  // most Linux terminals open plain interactive ones (~/.bashrc)
+  const args = process.platform === "darwin" ? ["-l", "-i", "-c", "command -v claude"] : ["-i", "-c", "command -v claude"];
+  const r = spawnSync(shell, args, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] });
+  const found = r.stdout.trim().split("\n").pop()?.trim();
+  if (!found) return;
+  if (found === file) console.log(`Checked: a new shell runs ${collapseHome(file)} for \`claude\`.`);
+  else {
+    log(`warning: a new shell still runs ${found} for \`claude\`. Something later in your startup files puts its folder first;`);
+    log(`move planhop's block (between "${BEGIN}" and "${END}") to the very end.`);
+  }
+}
+
+function cmdShim(rest: string[]): void {
+  const flags = new Set(rest.filter((a) => a.startsWith("--")));
+  const dirArg = rest.find((a) => !a.startsWith("--"));
   const dir = normalizeDir(dirArg ?? join(home(), ".local", "share", "planhop", "bin"));
   const file = join(dir, "claude");
+  const rc = detectRc(dir);
+
+  if (flags.has("--remove")) {
+    if (existsSync(file) && readFileSync(file, "utf8").includes(SHIM_MARKER)) {
+      unlinkSync(file); // planhop's own generated file
+      console.log(`Removed ${collapseHome(file)}`);
+    }
+    if (rc && removeRcBlock(rc.path)) console.log(`Removed planhop's PATH line from ${collapseHome(rc.path)}`);
+    console.log("`claude` runs Claude Code directly again in new terminals.");
+    return;
+  }
+
   if (existsSync(file) && !readFileSync(file, "utf8").includes(SHIM_MARKER)) {
     fail(`${file} exists and isn't a planhop shim; not overwriting it`);
   }
   mkdirSync(dir, { recursive: true });
   writeFileSync(file, shimScript());
   chmodSync(file, 0o755);
-  console.log(`Wrote ${file}`);
-  console.log(`Make sure ${dir} comes before the real claude on your PATH, e.g. at the END of your shell rc:`);
-  console.log(`  export PATH="${collapseHome(dir).replace(/^~/, "$HOME")}:$PATH"`);
+  console.log(`Wrote ${collapseHome(file)}`);
+
+  if (!rc) {
+    console.log(`Add this at the END of your shell's startup file, so it comes before the real claude:`);
+    console.log(`  export PATH="${collapseHome(dir).replace(/^~/, "$HOME")}:$PATH"`);
+    return;
+  }
+  const where = collapseHome(rc.path);
+  const yes = flags.has("--yes") || (canAsk() && ["", "y", "yes"].includes((ask(`Add planhop to ${where} so new terminals use it? [Y/n] `) ?? "n").toLowerCase()));
+  if (!yes) {
+    console.log(`Not changed. To do it yourself, add this at the END of ${where}:`);
+    console.log(`  ${rc.line}`);
+    return;
+  }
+  const result = installRcBlock(rc.path, rc.line);
+  console.log(result === "unchanged" ? `${where} already has planhop's PATH line.` : `${result === "added" ? "Added" : "Updated"} planhop's PATH line at the end of ${where}.`);
+  verifyShim(file);
+  console.log(rc.shell === "fish" ? "Open a new terminal (or run: exec fish) to start using it." : `Open a new terminal (or run: source ${where}) to start using it.`);
 }
 
 /** Used by the shim: prints shell code that sets up the environment. */
@@ -218,7 +268,7 @@ async function main(): Promise<void> {
     case "status":
       return cmdStatus();
     case "shim":
-      cmdShim(rest[0]);
+      cmdShim(rest);
       return;
     case "pick":
       return cmdPick(afterDashes);

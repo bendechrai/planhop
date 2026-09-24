@@ -81,10 +81,11 @@ planhop status
 planhop run
 
 # 4. Optional: make plain `claude` go through planhop too
-planhop shim                  # writes ~/.local/share/planhop/bin/claude
-# then add this to the END of your ~/.zshrc or ~/.bashrc, so it comes before the real claude:
-export PATH="$HOME/.local/share/planhop/bin:$PATH"
+planhop shim                  # writes ~/.local/share/planhop/bin/claude, then offers to
+                              # add it to your shell's startup file (zsh, bash or fish)
 ```
+
+`planhop shim` puts a marked block at the end of your startup file, checks that a new terminal now finds planhop's `claude` first, and warns if something else still wins. `planhop shim --remove` takes it all out again. For other shells it prints the line to add yourself.
 
 
 ### Statusline

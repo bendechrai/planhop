@@ -360,7 +360,7 @@ planhop login b                    <span class="c"># opens your browser to log B
 planhop status                     <span class="c"># usage per account, and which one is next</span>
 planhop run                        <span class="c"># starts Claude Code on the account planhop picks</span></code></pre>
       <div class="text">
-        <p id="shim">Installing planhop doesn't change what <code class="inline">claude</code> does. To keep typing <code class="inline">claude</code> and have it go through planhop, run <code class="inline">planhop shim</code>: it writes a small <code class="inline">claude</code> command to <code class="inline">~/.local/share/planhop/bin</code> and prints the <code class="inline">PATH</code> line to add so that command comes first.</p>
+        <p id="shim">Installing planhop doesn't change what <code class="inline">claude</code> does. To keep typing <code class="inline">claude</code> and have it go through planhop, run <code class="inline">planhop shim</code>: it writes a small <code class="inline">claude</code> command to <code class="inline">~/.local/share/planhop/bin</code>, offers to add it to your shell's startup file, and checks that new terminals pick it up. <code class="inline">planhop shim --remove</code> undoes it.</p>
         <p>Then check which account each session is on in Claude Code's status bar, along with that account's own 5-hour and weekly usage:</p>
       </div>
 <pre><code>{ "statusLine": { "type": "command", "command": "planhop statusline" } }</code></pre>

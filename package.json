@@ -1,6 +1,6 @@
 {
   "name": "planhop",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run Claude Code on whichever of your subscriptions has quota closest to expiring, with shared config and sessions",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
