@@ -11,6 +11,7 @@ import { findRealClaude, SHIM_MARKER } from "./realbin.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks } from "./share.js";
 import { pickShell, shimScript } from "./shell.js";
 import { refresh, renderStatusline } from "./statusline.js";
+import { formatTable } from "./table.js";
 import { gatherUsage } from "./usage.js";
 
 const HELP = `planhop - run Claude Code on whichever subscription's quota expires soonest
@@ -95,18 +96,20 @@ async function cmdStatus(): Promise<void> {
   const rows = [...scored].sort(
     (a, b) => Number(a.blocked) - Number(b.blocked) || (a.h7 ?? Infinity) - (b.h7 ?? Infinity),
   );
-  const pad = (s: string, n: number): string => s.padStart(n);
-  console.log(`   ${"account".padEnd(12)}${pad("5h used", 8)}${pad("resets", 9)}${pad("7d used", 9)}${pad("resets", 9)}  login`);
-  for (const a of rows) {
+  const pct = (x: number): string => `${Math.round(x * 100)}%`;
+  const body = rows.map((a) => {
     const notes = [accountEmail(a.dir) ?? "?"];
     if (a.blocked) notes.push(`AT LIMIT for ${fmtHours(a.unblockIn)}`);
     if (a.stale) notes.push(`cached ${fmtHours((now - a.fetchedAt) / 3_600_000)} ago`);
-    console.log(
-      `${a === chosen ? "-> " : "   "}${a.name.padEnd(12)}${pad(`${Math.round(a.u5 * 100)}%`, 7)}${pad(fmtHours(a.h5), 10)}` +
-        `${pad(`${Math.round(a.u7 * 100)}%`, 8)}${pad(fmtHours(a.h7), 9)}  ${notes.join(", ")}`,
-    );
-  }
-  for (const e of errors) console.log(`   ${e.name.padEnd(12)}ERROR: ${e.error}`);
+    return [a === chosen ? "->" : "", a.name, pct(a.u5), fmtHours(a.h5), pct(a.u7), fmtHours(a.h7), notes.join(", ")];
+  });
+  for (const e of errors) body.push(["", e.name, "-", "-", "-", "-", `ERROR: ${e.error}`]);
+  const lines = formatTable(
+    ["", "account", "5h used", "resets", "7d used", "resets", "login"],
+    body,
+    ["left", "left", "right", "right", "right", "right", "left"],
+  );
+  for (const l of lines) console.log(l);
 }
 
 function cmdAdd(name: string | undefined, dirArg: string | undefined): void {
