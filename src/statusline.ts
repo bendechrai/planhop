@@ -163,7 +163,7 @@ export function renderStatusline(raw: string, opts: StatuslineOptions = {}, env:
   const dir = normalizeDir(env.CLAUDE_CONFIG_DIR || defaultClaudeDir(env), env);
   const account = accountForDir(loadConfig(env), dir, env);
   const name = account?.name ?? dirKey(dir, env);
-  const label = accountEmail(dir, env) ?? (env.CLAUDE_CODE_OAUTH_TOKEN ? "token" : name);
+  const label = accountEmail(dir, env) ?? (env.CLAUDE_CODE_OAUTH_TOKEN ? "token" : (account?.name ?? "not logged in"));
   const sep = `${c.dim} | ${c.reset}`;
   const head = `${c.magenta}${label}${c.reset}`;
 
@@ -216,4 +216,41 @@ export function renderStatusline(raw: string, opts: StatuslineOptions = {}, env:
     if (extra) parts.push(extra);
   }
   return parts.join(sep);
+}
+
+export interface Preview {
+  /** what each way of combining would look like, rendered with sample input */
+  append: string;
+  wrap: string;
+  replace: string;
+  /** "wrap" when the existing line already shows the folder, model or usage itself */
+  suggested: "append" | "wrap";
+}
+
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+export const stripAnsi = (s: string): string => s.replace(ANSI, "");
+
+/**
+ * Render every way of combining planhop with `existing`, using sample input
+ * like Claude Code's, so the installer can show real results instead of
+ * describing them. Runs the existing command (it's what the status line will run).
+ */
+export function previewCombinations(existing: string, env: Env = process.env, cwd: string = process.cwd()): Preview {
+  const sample = JSON.stringify({
+    session_id: "planhop-preview",
+    cwd,
+    workspace: { current_dir: cwd, project_dir: cwd },
+    model: { id: "claude-opus", display_name: "Opus" },
+    context_window: { used_percentage: 12, context_window_size: 200000 },
+  });
+  const wrap = renderStatusline(sample, { wrap: existing }, env);
+  // The existing line on its own: the wrap preview minus planhop's account label in front
+  const own = stripAnsi(wrap).split(" | ").slice(1).join(" | ");
+  const full = own.includes(basename(cwd)) || /\bOpus\b/.test(own) || /\d+(\.\d+)?%/.test(own);
+  return {
+    append: renderStatusline(sample, { append: existing }, env),
+    wrap,
+    replace: renderStatusline(sample, {}, env),
+    suggested: full ? "wrap" : "append",
+  };
 }

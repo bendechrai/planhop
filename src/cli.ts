@@ -13,7 +13,7 @@ import { canAsk, ask } from "./prompt.js";
 import { BEGIN, detectRc, END, installRcBlock, removeRcBlock } from "./rc.js";
 import { currentStatusline, includesPlanhop, installStatusline, settingsPath, uninstallStatusline, type Combine } from "./settings.js";
 import { pickShell, shimScript } from "./shell.js";
-import { refresh, renderStatusline } from "./statusline.js";
+import { previewCombinations, refresh, renderStatusline } from "./statusline.js";
 import { formatTable } from "./table.js";
 import { gatherUsage } from "./usage.js";
 
@@ -261,21 +261,28 @@ async function cmdRun(args: string[]): Promise<void> {
   runClaude(args, childEnv(result.dir, result.name));
 }
 
-/** Ask how to combine with an existing status line, unless told already. */
+/**
+ * Ask how to combine with an existing status line, unless told already. Shows
+ * what each choice would really look like, and suggests keeping a full status
+ * line as it is (the existing one already shows the folder, model or usage).
+ */
 function chooseCombine(existing: string, flags: Set<string>): Combine | undefined {
   if (flags.has("--append")) return "append";
   if (flags.has("--wrap")) return "wrap";
   if (flags.has("--replace")) return "replace";
-  if (flags.has("--yes")) return "append";
-  const answer = ask(
-    `Claude Code already has a status line:\n  ${existing}\n` +
-      `  1) show it after planhop's account and usage (good for short ones, like Meko's)\n` +
-      `  2) keep it as it is, with just the account in front (good for full ones, like the Claude Usage app's)\n` +
-      `  3) replace it with planhop's\n` +
-      `Choose [1]: `,
-  );
+  const preview = previewCombinations(existing);
+  if (flags.has("--yes")) return preview.suggested;
+  const options: [Combine, string, string][] = [
+    ["append", "show it after planhop's account and usage", preview.append],
+    ["wrap", "keep it as it is, with just the account in front", preview.wrap],
+    ["replace", "use planhop's instead", preview.replace],
+  ];
+  const def = options.findIndex(([how]) => how === preview.suggested) + 1;
+  const lines = options.map(([, what, looks], i) => `  ${String(i + 1)}) ${what}${i + 1 === def ? " (suggested)" : ""}\n       ${looks}\x1b[0m`);
+  const answer = ask(`Claude Code already has a status line:\n  ${existing}\nWith sample input, here's how each choice would look:\n${lines.join("\n")}\nChoose [${String(def)}]: `);
   if (answer === undefined) return undefined;
-  return answer === "2" ? "wrap" : answer === "3" ? "replace" : "append";
+  const picked = answer === "" ? def : Number(answer);
+  return options[picked - 1]?.[0] ?? options[def - 1]?.[0];
 }
 
 /** Set up Claude Code's status line; true if it's (now) showing planhop. */

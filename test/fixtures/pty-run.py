@@ -14,7 +14,7 @@ out = b""
 asked = 0
 waited_all = True
 deadline = time.time() + 20
-prompts = (b"[Y/n] ", b"Choose [1]: ", b"Choose [3]: ")
+prompts = (b"[Y/n] ", b"Choose [1]: ", b"Choose [2]: ", b"Choose [3]: ")
 while time.time() < deadline:
     try:
         chunk = os.read(fd, 1024)

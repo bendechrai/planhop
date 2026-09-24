@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { renderStatusline } from "../src/statusline.js";
+import { previewCombinations, renderStatusline } from "../src/statusline.js";
 import { saveCache } from "../src/usage.js";
 
 let home: string;
@@ -36,5 +36,21 @@ describe("renderStatusline", () => {
   it("shows another status line's output after planhop's own", () => {
     const line = plain(renderStatusline(input, { append: 'printf "Meko: Misc"' }, env));
     expect(line).toMatch(/^b@example.com \| proj \| Opus \| ctx 12% \| 5h 25% .* \| 7d 60% .* \| Meko: Misc$/);
+  });
+});
+
+describe("previewCombinations", () => {
+  it("suggests showing a short status line after planhop's", () => {
+    const p = previewCombinations('printf "Meko: Misc"', env, "/tmp/proj");
+    expect(p.suggested).toBe("append");
+    expect(plain(p.append)).toMatch(/\| Opus \| .*\| Meko: Misc$/);
+    expect(plain(p.wrap)).toBe("b@example.com | Meko: Misc");
+    expect(plain(p.replace)).not.toContain("Meko");
+  });
+
+  it("suggests keeping a full status line as it is", () => {
+    const p = previewCombinations('printf "proj | Opus | Usage: 40%%"', env, "/tmp/proj");
+    expect(p.suggested).toBe("wrap");
+    expect(plain(p.wrap)).toBe("b@example.com | proj | Opus | Usage: 40%");
   });
 });
