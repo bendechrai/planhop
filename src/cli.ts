@@ -11,6 +11,7 @@ import { findRealClaude, SHIM_MARKER } from "./realbin.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks } from "./share.js";
 import { canAsk, ask } from "./prompt.js";
 import { BEGIN, detectRc, END, installRcBlock, removeRcBlock } from "./rc.js";
+import { currentStatusline, includesPlanhop, installStatusline, settingsPath, uninstallStatusline, type Combine } from "./settings.js";
 import { pickShell, shimScript } from "./shell.js";
 import { refresh, renderStatusline } from "./statusline.js";
 import { formatTable } from "./table.js";
@@ -29,8 +30,13 @@ Usage:
                                ~/.local/share/planhop/bin/claude and (after asking)
                                adds it to your shell's startup file
   planhop shim --remove        undo that
-  planhop statusline [--wrap "<cmd>"] [--usage-app-compat]
-                               statusline command for Claude Code settings.json
+  planhop statusline --install [--append|--wrap|--replace] [--yes]
+                               show the account and its usage in Claude Code's status line,
+                               keeping any status line you already have (asks how)
+  planhop statusline --uninstall
+                               put the previous status line back
+  planhop statusline [--append "<cmd>"] [--wrap "<cmd>"] [--usage-app-compat]
+                               the status line itself (what --install sets up)
 
 Environment:
   PLANHOP_ACCOUNT=<name>       force an account
@@ -212,7 +218,22 @@ function cmdShim(rest: string[]): void {
   const result = installRcBlock(rc.path, rc.line);
   console.log(result === "unchanged" ? `${where} already has planhop's PATH line.` : `${result === "added" ? "Added" : "Updated"} planhop's PATH line at the end of ${where}.`);
   verifyShim(file);
+  offerStatusline(flags);
   console.log(rc.shell === "fish" ? "Open a new terminal (or run: exec fish) to start using it." : `Open a new terminal (or run: source ${where}) to start using it.`);
+}
+
+/** At the end of setup, offer planhop's status line if it isn't there yet. */
+function offerStatusline(flags: Set<string>): void {
+  let existing: string | undefined;
+  try {
+    existing = currentStatusline();
+  } catch {
+    return;
+  }
+  if (includesPlanhop(existing)) return;
+  const yes = flags.has("--yes") || (canAsk() && ["", "y", "yes"].includes((ask("Also show the account and its usage in Claude Code's status line? [Y/n] ") ?? "n").toLowerCase()));
+  if (yes) installStatuslineFlow(flags);
+  else console.log("Skipped. Add it later with: planhop statusline --install");
 }
 
 /** Used by the shim: prints shell code that sets up the environment. */
@@ -240,16 +261,69 @@ async function cmdRun(args: string[]): Promise<void> {
   runClaude(args, childEnv(result.dir, result.name));
 }
 
+/** Ask how to combine with an existing status line, unless told already. */
+function chooseCombine(existing: string, flags: Set<string>): Combine | undefined {
+  if (flags.has("--append")) return "append";
+  if (flags.has("--wrap")) return "wrap";
+  if (flags.has("--replace")) return "replace";
+  if (flags.has("--yes")) return "append";
+  const answer = ask(
+    `Claude Code already has a status line:\n  ${existing}\n` +
+      `  1) show it after planhop's account and usage (good for short ones, like Meko's)\n` +
+      `  2) keep it as it is, with just the account in front (good for full ones, like the Claude Usage app's)\n` +
+      `  3) replace it with planhop's\n` +
+      `Choose [1]: `,
+  );
+  if (answer === undefined) return undefined;
+  return answer === "2" ? "wrap" : answer === "3" ? "replace" : "append";
+}
+
+/** Set up Claude Code's status line; true if it's (now) showing planhop. */
+function installStatuslineFlow(flags: Set<string>): boolean {
+  let existing: string | undefined;
+  try {
+    existing = currentStatusline();
+  } catch (e) {
+    log(`not changing ${collapseHome(settingsPath())}: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+  if (includesPlanhop(existing)) {
+    console.log("Claude Code's status line already shows planhop.");
+    return true;
+  }
+  const how = existing ? chooseCombine(existing, flags) : "replace";
+  if (!how) {
+    console.log(`Not changed. To choose non-interactively: planhop statusline --install --append|--wrap|--replace`);
+    return false;
+  }
+  const { command } = installStatusline(how);
+  console.log(`Claude Code's status line now runs: ${command}`);
+  console.log(`(saved in ${collapseHome(settingsPath())}, shared by every account; planhop statusline --uninstall puts the old one back)`);
+  return true;
+}
+
 async function cmdStatusline(args: string[]): Promise<void> {
+  const flags = new Set(args.filter((a) => a.startsWith("--")));
+  if (flags.has("--install")) {
+    installStatuslineFlow(flags);
+    return;
+  }
+  if (flags.has("--uninstall")) {
+    const r = uninstallStatusline();
+    console.log(r === "restored" ? "Put back the status line from before planhop." : r === "removed" ? "Removed planhop's status line." : "planhop isn't in Claude Code's status line.");
+    return;
+  }
   let wrap: string | undefined;
+  let append: string | undefined;
   let usageAppCompat = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--wrap") wrap = args[++i];
+    else if (args[i] === "--append") append = args[++i];
     else if (args[i] === "--usage-app-compat") usageAppCompat = true;
   }
   const chunks: Buffer[] = [];
   if (!process.stdin.isTTY) for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  console.log(renderStatusline(Buffer.concat(chunks).toString("utf8"), { wrap, usageAppCompat }));
+  console.log(renderStatusline(Buffer.concat(chunks).toString("utf8"), { wrap, append, usageAppCompat }));
 }
 
 async function main(): Promise<void> {

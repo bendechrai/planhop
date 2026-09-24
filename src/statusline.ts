@@ -40,6 +40,8 @@ export interface StatuslineOptions {
   wrap?: string;
   /** Run `wrap` against a private HOME holding this account's usage in the Claude Usage app's cache format. */
   usageAppCompat?: boolean;
+  /** Shell command whose output goes after planhop's full built-in line (e.g. another tool's status line). */
+  append?: string;
 }
 
 function mtime(p: string): number {
@@ -168,23 +170,23 @@ export function renderStatusline(raw: string, opts: StatuslineOptions = {}, env:
   maybeRefresh(dir, name, env);
   const usage = loadCache(env)[name];
 
+  const usageEnv: Record<string, string> = { PLANHOP_ACCOUNT: name, PLANHOP_EMAIL: label };
+  if (usage) {
+    usageEnv.PLANHOP_5H_PCT = String(Math.round(usage.u5 * 100));
+    usageEnv.PLANHOP_7D_PCT = String(Math.round(usage.u7 * 100));
+    if (usage.r5) usageEnv.PLANHOP_5H_RESET = String(Math.floor(usage.r5 / 1000));
+    if (usage.r7) usageEnv.PLANHOP_7D_RESET = String(Math.floor(usage.r7 / 1000));
+  }
+  /** Run another status line command with Claude Code's input and planhop's usage in its environment. */
+  const runOther = (cmd: string, extraEnv: Record<string, string> = {}): string => {
+    const r = spawnSync("/bin/sh", ["-c", cmd], { input: raw, encoding: "utf8", env: { ...process.env, ...usageEnv, ...extraEnv }, timeout: 5000 });
+    return (r.stdout || "").replace(/\n+$/, "");
+  };
+
   if (opts.wrap) {
-    const usageEnv: Record<string, string> = { PLANHOP_ACCOUNT: name, PLANHOP_EMAIL: label };
-    if (usage) {
-      usageEnv.PLANHOP_5H_PCT = String(Math.round(usage.u5 * 100));
-      usageEnv.PLANHOP_7D_PCT = String(Math.round(usage.u7 * 100));
-      if (usage.r5) usageEnv.PLANHOP_5H_RESET = String(Math.floor(usage.r5 / 1000));
-      if (usage.r7) usageEnv.PLANHOP_7D_RESET = String(Math.floor(usage.r7 / 1000));
-    }
     const compatHome = opts.usageAppCompat && !isDefaultDir(dir, env) ? prepareUsageAppHome(dir, env) : undefined;
     if (compatHome && usage) writeUsageAppCache(dir, usage, env);
-    const r = spawnSync("/bin/sh", ["-c", opts.wrap], {
-      input: raw,
-      encoding: "utf8",
-      env: { ...process.env, ...usageEnv, ...(compatHome ? { HOME: compatHome, PLANHOP_REAL_HOME: home(env) } : {}) },
-      timeout: 5000,
-    });
-    const rest = (r.stdout || "").replace(/\n+$/, "");
+    const rest = runOther(opts.wrap, compatHome ? { HOME: compatHome, PLANHOP_REAL_HOME: home(env) } : {});
     return rest ? `${head}${sep}${rest}` : head;
   }
 
@@ -208,6 +210,10 @@ export function renderStatusline(raw: string, opts: StatuslineOptions = {}, env:
     parts.push(`${levelColor(week)}7d ${Math.round(week * 100)}%${weekReset}${c.reset}`);
   } else {
     parts.push(`${c.dim}usage ~${c.reset}`);
+  }
+  if (opts.append) {
+    const extra = runOther(opts.append);
+    if (extra) parts.push(extra);
   }
   return parts.join(sep);
 }

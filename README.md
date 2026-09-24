@@ -90,19 +90,21 @@ planhop shim                  # writes ~/.local/share/planhop/bin/claude, then o
 
 ### Statusline
 
-Show which account a session is on, with that account's own 5-hour and weekly usage, in `~/.claude/settings.json`:
+Show which account a session is on, with that account's own 5-hour and weekly usage, in Claude Code's status line:
 
-```json
-{ "statusLine": { "type": "command", "command": "planhop statusline" } }
+```sh
+planhop statusline --install
 ```
 
-To keep an existing statusline script and just add the account in front of it:
+`planhop shim` offers this too. It edits `~/.claude/settings.json`, which every account shares. If you already have a status line, it asks how to combine them:
 
-```json
-{ "statusLine": { "type": "command", "command": "planhop statusline --wrap 'bash ~/.claude/statusline-command.sh'" } }
-```
+- **show it after planhop's** (`--append`), for short ones like Meko's: `b@example.com | proj | Opus | 5h 25% | 7d 60% | Meko: Misc`
+- **keep it as it is with just the account in front** (`--wrap`), for full ones like the Claude Usage app's, which already show the folder, model and usage
+- **replace it** (`--replace`)
 
-The wrapped command gets `PLANHOP_ACCOUNT`, `PLANHOP_EMAIL`, `PLANHOP_5H_PCT`, `PLANHOP_5H_RESET`, `PLANHOP_7D_PCT` and `PLANHOP_7D_RESET` (resets are Unix seconds) in its environment. If the script comes from the macOS "Claude Usage" menu bar app, add `--usage-app-compat` so it shows each account's own usage rather than the app's account.
+Pass one of those flags (or `--yes` for the first) to skip the question. `planhop statusline --uninstall` puts back what you had before.
+
+Commands run through `--append` or `--wrap` get Claude Code's status line input on stdin, plus `PLANHOP_ACCOUNT`, `PLANHOP_EMAIL`, `PLANHOP_5H_PCT`, `PLANHOP_5H_RESET`, `PLANHOP_7D_PCT` and `PLANHOP_7D_RESET` (resets are Unix seconds) in their environment. If a wrapped script comes from the macOS "Claude Usage" menu bar app, add `--usage-app-compat` to the command in `settings.json` so it shows each account's own usage rather than the app's account.
 
 ## Everyday use
 

@@ -32,4 +32,9 @@ describe("renderStatusline", () => {
     const line = plain(renderStatusline(input, { wrap: 'printf "%s %s%%" "$PLANHOP_ACCOUNT" "$PLANHOP_7D_PCT"' }, env));
     expect(line).toBe("b@example.com | b 60%");
   });
+
+  it("shows another status line's output after planhop's own", () => {
+    const line = plain(renderStatusline(input, { append: 'printf "Meko: Misc"' }, env));
+    expect(line).toMatch(/^b@example.com \| proj \| Opus \| ctx 12% \| 5h 25% .* \| 7d 60% .* \| Meko: Misc$/);
+  });
 });
