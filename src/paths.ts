@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 export interface Env {
   readonly [key: string]: string | undefined;
@@ -39,15 +39,24 @@ export function claudeJsonPath(dir: string, env: Env = process.env): string {
   return isDefaultDir(dir, env) ? join(home(env), ".claude.json") : join(normalizeDir(dir, env), ".claude.json");
 }
 
+/**
+ * An XDG base directory. Per the spec, an unset, empty or relative value is
+ * ignored in favour of the default, so `XDG_CONFIG_HOME=` can't make planhop
+ * read and write its files relative to the current directory.
+ */
+function xdgDir(value: string | undefined, fallback: string): string {
+  return value && isAbsolute(value) ? value : fallback;
+}
+
 export function configFile(env: Env = process.env): string {
-  return join(env.XDG_CONFIG_HOME ?? join(home(env), ".config"), "planhop", "config.json");
+  return join(xdgDir(env.XDG_CONFIG_HOME, join(home(env), ".config")), "planhop", "config.json");
 }
 
 export function cacheDir(env: Env = process.env): string {
-  return join(env.XDG_CACHE_HOME ?? join(home(env), ".cache"), "planhop");
+  return join(xdgDir(env.XDG_CACHE_HOME, join(home(env), ".cache")), "planhop");
 }
 
 /** Durable state: the MCP sync record, and files planhop moved aside instead of deleting. */
 export function stateDir(env: Env = process.env): string {
-  return join(env.XDG_STATE_HOME ?? join(home(env), ".local", "state"), "planhop");
+  return join(xdgDir(env.XDG_STATE_HOME, join(home(env), ".local", "state")), "planhop");
 }
