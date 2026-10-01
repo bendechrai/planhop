@@ -1,13 +1,15 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { modeOf, readJson, writeAtomic, type Json } from "./fsutil.js";
-import { defaultClaudeDir, stateDir, type Env } from "./paths.js";
+import { listAccounts, type Config } from "./config.js";
+import { createExclusive, isObj, modeOf, readJson, writeAtomic, type Json } from "./fsutil.js";
+import { defaultClaudeDir, isDefaultDir, stateDir, type Env } from "./paths.js";
 import { shellQuote } from "./shell.js";
 
 /** How to combine planhop with a status line that's already set up. */
 export type Combine = "append" | "wrap" | "replace";
 
 const PLANHOP = "planhop statusline";
+const MEMORY_HOOK = "planhop allow-memory";
 
 /** ~/.claude/settings.json, which every planhop account shares through a symlink. */
 export function settingsPath(env: Env = process.env): string {
@@ -16,10 +18,6 @@ export function settingsPath(env: Env = process.env): string {
 
 function previousFile(env: Env): string {
   return join(stateDir(env), "statusline-previous.json");
-}
-
-function isObj(v: unknown): v is Json {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /** Parsed settings, {} when the file doesn't exist; throws if it exists but isn't valid JSON (never overwrite it then). */
@@ -85,4 +83,71 @@ export function uninstallStatusline(env: Env = process.env): "restored" | "remov
   else delete settings.statusLine;
   writeSettings(path, settings);
   return previous ? "restored" : "removed";
+}
+
+// ---- Memory hook: lets accounts other than ~/.claude save memories without Claude Code asking ----
+
+function asArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? (v as unknown[]) : [];
+}
+
+function isMemoryHook(hook: unknown): boolean {
+  return isObj(hook) && typeof hook.command === "string" && /\bplanhop['"]?\s+allow-memory\b/.test(hook.command);
+}
+
+function hasMemoryHook(settings: Json): boolean {
+  const entries = isObj(settings.hooks) ? asArray(settings.hooks.PermissionRequest) : [];
+  return entries.some((entry) => isObj(entry) && asArray(entry.hooks).some(isMemoryHook));
+}
+
+/**
+ * The settings files that need the memory hook: the ones read by accounts
+ * whose projects/ is a symlink into ~/.claude. Normally that's the one shared
+ * settings.json; accounts that keep their own settings.json each need it.
+ * Empty when no account needs it.
+ */
+export function memoryHookSettings(cfg: Config, env: Env = process.env): string[] {
+  if (cfg.keepSeparate.includes("projects")) return [];
+  const others = listAccounts(cfg, env).filter((a) => !isDefaultDir(a.dir, env));
+  if (others.length === 0) return [];
+  return cfg.keepSeparate.includes("settings.json") ? others.map((a) => join(a.dir, "settings.json")) : [settingsPath(env)];
+}
+
+/** Whether the settings file at `path` already runs planhop's memory hook. */
+export function memoryHookInstalled(path: string): boolean {
+  return hasMemoryHook(readSettings(path));
+}
+
+/** True the first time planhop brings the memory hook up, so that launches mention it once and not again. */
+export function firstMemoryHookMention(env: Env = process.env): boolean {
+  return createExclusive(join(stateDir(env), "memory-hook-mentioned"));
+}
+
+/** Add planhop's memory hook to the settings file at `path`, keeping any other hooks. */
+export function installMemoryHook(path: string): "added" | "unchanged" {
+  const settings = readSettings(path);
+  if (hasMemoryHook(settings)) return "unchanged";
+  const hooks = isObj(settings.hooks) ? settings.hooks : {};
+  const entry = { matcher: "Write|Edit", hooks: [{ type: "command", command: MEMORY_HOOK }] };
+  settings.hooks = { ...hooks, PermissionRequest: [...asArray(hooks.PermissionRequest), entry] };
+  writeSettings(path, settings);
+  return "added";
+}
+
+/** Take planhop's memory hook out of the settings file at `path`, leaving any other hooks. */
+export function uninstallMemoryHook(path: string): "removed" | "not-installed" {
+  const settings = readSettings(path);
+  if (!hasMemoryHook(settings)) return "not-installed";
+  const hooks = isObj(settings.hooks) ? { ...settings.hooks } : {};
+  const kept = asArray(hooks.PermissionRequest).flatMap((entry) => {
+    if (!isObj(entry) || !asArray(entry.hooks).some(isMemoryHook)) return [entry];
+    const others = asArray(entry.hooks).filter((h) => !isMemoryHook(h));
+    return others.length > 0 ? [{ ...entry, hooks: others }] : [];
+  });
+  if (kept.length > 0) hooks.PermissionRequest = kept;
+  else delete hooks.PermissionRequest;
+  if (Object.keys(hooks).length > 0) settings.hooks = hooks;
+  else delete settings.hooks;
+  writeSettings(path, settings);
+  return "removed";
 }

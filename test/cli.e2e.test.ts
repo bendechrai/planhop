@@ -69,4 +69,34 @@ describe("planhop add", () => {
     const r = run(["add", "a", join(home, ".claude-x")]);
     expect(r.stderr).toMatch(/already registered/);
   });
+
+  it("says how to stop Claude Code asking about memories on a second account", () => {
+    expect(run(["add", "b"]).stdout).toMatch(/planhop allow-memory --install/);
+    expect(run(["allow-memory", "--install"]).stdout).toMatch(/without asking/);
+    expect(run(["add", "c"]).stdout).not.toMatch(/allow-memory/);
+  });
+});
+
+describe("planhop allow-memory", () => {
+  const request = (file: string): string => JSON.stringify({ tool_name: "Write", tool_input: { file_path: file } });
+  const hook = (file: string, dir: string): string =>
+    spawnSync(process.execPath, [CLI, "allow-memory"], { encoding: "utf8", input: request(file), env: { HOME: home, PATH: "/usr/bin:/bin", CLAUDE_CONFIG_DIR: dir } }).stdout;
+
+  it("approves a memory save on a second account and nothing else", () => {
+    mkdirSync(join(home, ".claude", "projects"));
+    run(["add", "b"]);
+    const b = join(home, ".claude-b");
+    expect(JSON.parse(hook(join(b, "projects", "-proj", "memory", "MEMORY.md"), b))).toEqual({
+      hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } },
+    });
+    expect(hook(join(b, "settings.json"), b)).toBe("");
+    expect(hook(join(home, ".claude", "projects", "-proj", "memory", "MEMORY.md"), join(home, ".claude"))).toBe("");
+  });
+
+  it("takes the hook out again", () => {
+    run(["add", "b"]);
+    run(["allow-memory", "--install"]);
+    expect(run(["allow-memory", "--uninstall"]).stdout).toMatch(/Removed planhop's memory hook/);
+    expect(run(["allow-memory", "--uninstall"]).stdout).toMatch(/isn't in Claude Code's settings/);
+  });
 });

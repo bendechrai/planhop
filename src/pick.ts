@@ -3,6 +3,7 @@ import { listAccounts, loadConfig, type Config } from "./config.js";
 import { accountEmail } from "./credentials.js";
 import { isDefaultDir, type Env } from "./paths.js";
 import { ask } from "./prompt.js";
+import { firstMemoryHookMention, memoryHookInstalled, memoryHookSettings } from "./settings.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks, syncMcp, type Ask, type Conflict } from "./share.js";
 import { gatherUsage } from "./usage.js";
 
@@ -31,12 +32,24 @@ export const askOnTerminal: Ask = (c: Conflict) => {
   return answer === "1" ? "shared" : answer === "2" ? "local" : "skip";
 };
 
+/** Once, for accounts set up before planhop had the memory hook: say how to add it. */
+function memoryHookNote(env: Env, cfg: Config): string[] {
+  try {
+    const missing = memoryHookSettings(cfg, env).some((file) => !memoryHookInstalled(file));
+    if (!missing || !firstMemoryHookMention(env)) return [];
+  } catch {
+    return []; // a settings file that can't be read; planhop allow-memory --install explains
+  }
+  return ["Claude Code will ask before saving each memory on this account. To stop that: planhop allow-memory --install"];
+}
+
 function prepare(dir: string, env: Env, cfg: Config, ask: Ask): string[] {
   const notes: string[] = [];
   if (!isDefaultDir(dir, env)) {
     assertSeparateDir(dir, env);
     notes.push(...syncLinks(dir, env, ask, cfg.keepSeparate));
     seedClaudeJson(dir, env);
+    notes.push(...memoryHookNote(env, cfg));
   }
   try {
     syncMcp(env, cfg);

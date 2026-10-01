@@ -106,6 +106,16 @@ Pass one of those flags (or `--yes` for the first) to skip the question. `planho
 
 Commands run through `--append` or `--wrap` get Claude Code's status line input on stdin, plus `PLANHOP_ACCOUNT`, `PLANHOP_EMAIL`, `PLANHOP_5H_PCT`, `PLANHOP_5H_RESET`, `PLANHOP_7D_PCT` and `PLANHOP_7D_RESET` (resets are Unix seconds) in their environment. If a wrapped script comes from the macOS "Claude Usage" menu bar app, add `--usage-app-compat` to the command in `settings.json` so it shows each account's own usage rather than the app's account.
 
+### Memories
+
+Claude Code saves what it learns about a project in `projects/<project>/memory/`. On accounts other than `~/.claude`, `projects/` is a link into `~/.claude`, and Claude Code asks before every write that lands in `~/.claude` through a link. Permission rules in `settings.json` can't switch that question off, but a hook can:
+
+```sh
+planhop allow-memory --install
+```
+
+`planhop add` and `planhop shim` offer this too, once there's an account that needs it. If you set planhop up before it had this, it tells you once, the next time you launch on an account that needs it. It adds a `PermissionRequest` hook to `~/.claude/settings.json` (or to each account's own `settings.json` if you keep those separate). The hook approves a write only when Claude Code asked for it in the session's own account folder, under `projects/<project>/memory/`, and it really lands in `~/.claude/projects/<project>/memory/`. Everything else is left for Claude Code to ask about as usual. `planhop allow-memory --uninstall` takes it out again.
+
 ## Everyday use
 
 | | |

@@ -1,14 +1,53 @@
 import { randomBytes } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { closeSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 export type Json = Record<string, unknown>;
+
+export function isObj(v: unknown): v is Json {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function linkTarget(p: string): string | undefined {
+  try {
+    return readlinkSync(p);
+  } catch {
+    return undefined; // not a symlink, or not there
+  }
+}
+
+/**
+ * Where `p` really is. Symlinks are resolved in the deepest part of the path
+ * that exists, so a file or folder that doesn't exist yet is still placed
+ * where it would really live.
+ */
+export function realPath(p: string): string {
+  const rest: string[] = [];
+  let cur = p;
+  for (let hops = 0; ; ) {
+    try {
+      return join(realpathSync(cur), ...rest.reverse());
+    } catch {
+      // A symlink to something that doesn't exist yet: carry on from where it points
+      const target = hops < 40 ? linkTarget(cur) : undefined;
+      if (target !== undefined) {
+        hops++;
+        cur = resolve(dirname(cur), target);
+        continue;
+      }
+      const parent = dirname(cur);
+      if (parent === cur) return p;
+      rest.push(basename(cur));
+      cur = parent;
+    }
+  }
+}
 
 /** Parsed JSON object, or undefined if the file is missing, unreadable or not an object. */
 export function readJson(path: string): Json | undefined {
   try {
     const v: unknown = JSON.parse(readFileSync(path, "utf8"));
-    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Json) : undefined;
+    return isObj(v) ? v : undefined;
   } catch {
     return undefined;
   }

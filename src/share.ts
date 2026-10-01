@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, symlinkSync } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync } from "node:fs";
+import { basename, join, sep } from "node:path";
 import { listAccounts, loadConfig, type Config } from "./config.js";
-import { modeOf, readJson, withLock, writeAtomic, type Json } from "./fsutil.js";
+import { isObj, modeOf, readJson, realPath, withLock, writeAtomic, type Json } from "./fsutil.js";
 import { claudeJsonPath, defaultClaudeDir, home, isDefaultDir, normalizeDir, stateDir, type Env } from "./paths.js";
 
 /** Items in ~/.claude that stay per-account; everything else is symlinked. */
@@ -88,24 +88,9 @@ export function assertSeparateDir(dir: string, env: Env = process.env): void {
   if (target === src) return; // the default account itself
   const caseless = process.platform === "darwin" || process.platform === "win32";
   const norm = (p: string): string => (caseless ? p.toLowerCase() : p);
-  // Resolve symlinks in the deepest part of the path that exists, so a folder
-  // that doesn't exist yet is still compared by where it would really live
-  const real = (p: string): string => {
-    const rest: string[] = [];
-    let cur = p;
-    for (;;) {
-      try {
-        return join(realpathSync(cur), ...rest.reverse());
-      } catch {
-        const parent = dirname(cur);
-        if (parent === cur) return p;
-        rest.push(basename(cur));
-        cur = parent;
-      }
-    }
-  };
-  const a = norm(real(src));
-  const b = norm(real(target));
+  // A folder that doesn't exist yet is still compared by where it would really live
+  const a = norm(realPath(src));
+  const b = norm(realPath(target));
   let sameInode = false;
   try {
     const sa = statSync(src);
@@ -207,10 +192,6 @@ export function seedClaudeJson(dir: string, env: Env = process.env): void {
 
 /** Flattened MCP definitions: "u\0<name>" or "p\0<project>\0<name>" -> JSON of the server config. */
 type Flat = Record<string, string>;
-
-function isObj(v: unknown): v is Json {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
 
 export function flattenMcp(cfg: Json): Flat {
   const out: Flat = {};

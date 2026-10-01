@@ -366,6 +366,11 @@ planhop run                        <span class="c"># starts Claude Code on the a
 <pre><code>planhop statusline --install</code></pre>
       <div class="text">
         <p class="fine">Already have a status line, like Meko's or the Claude Usage app's? The installer asks whether to show it after planhop's or keep it with just the account in front, and <code class="inline">planhop statusline --uninstall</code> puts it back. The <a href="https://github.com/bendechrai/planhop#statusline">README</a> covers the rest.</p>
+        <p>Claude Code asks before saving each of its memories on the accounts you add, because their sessions folder is a link into <code class="inline">~/.claude</code>. <code class="inline">planhop add</code> offers a hook that approves just those saves. To add it later:</p>
+      </div>
+<pre><code>planhop allow-memory --install</code></pre>
+      <div class="text">
+        <p class="fine">The hook leaves every other permission question to Claude Code, and <code class="inline">planhop allow-memory --uninstall</code> takes it out again. The <a href="https://github.com/bendechrai/planhop#memories">README</a> says exactly what it approves.</p>
       </div>
     </section>
 

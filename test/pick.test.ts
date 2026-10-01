@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Account } from "../src/config.js";
+import { installMemoryHook } from "../src/settings.js";
 import type { Usage } from "../src/usage.js";
 
 const H = 3_600_000;
@@ -59,6 +60,17 @@ describe("pick", () => {
   it("honours a forced account and rejects unknown ones", async () => {
     expect((await pick([], { ...env, PLANHOP_ACCOUNT: "a" })).name).toBe("a");
     await expect(pick([], { ...env, PLANHOP_ACCOUNT: "nope" })).rejects.toThrow(/unknown account/);
+  });
+
+  it("mentions the memory hook once on an account that needs it, and never once it's installed", async () => {
+    const forced = { ...env, PLANHOP_ACCOUNT: "b" };
+    expect((await pick([], forced)).messages.join(" ")).toMatch(/planhop allow-memory --install/);
+    expect((await pick([], forced)).messages.join(" ")).not.toMatch(/allow-memory/);
+
+    const fresh = { ...forced, XDG_STATE_HOME: join(home, "state") };
+    expect((await pick([], { ...fresh, PLANHOP_ACCOUNT: "a" })).messages.join(" ")).not.toMatch(/allow-memory/);
+    installMemoryHook(join(home, ".claude", "settings.json"));
+    expect((await pick([], fresh)).messages.join(" ")).not.toMatch(/allow-memory/);
   });
 
   it("refuses an account folder that is really ~/.claude", async () => {

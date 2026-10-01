@@ -3,15 +3,29 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { choose, fmtHours, score } from "./choose.js";
-import { hasAccount, isValidAccountName, listAccounts, loadConfig, saveConfig } from "./config.js";
+import { hasAccount, isValidAccountName, listAccounts, loadConfig, saveConfig, type Config } from "./config.js";
 import { accountEmail } from "./credentials.js";
+import { realPath } from "./fsutil.js";
+import { ALLOW, isSharedMemoryWrite } from "./memory.js";
 import { collapseHome, defaultClaudeDir, home, isDefaultDir, normalizeDir } from "./paths.js";
 import { askOnTerminal, pick } from "./pick.js";
 import { findRealClaude, SHIM_MARKER } from "./realbin.js";
 import { assertSeparateDir, seedClaudeJson, syncLinks } from "./share.js";
 import { canAsk, ask } from "./prompt.js";
 import { BEGIN, detectRc, END, installRcBlock, removeRcBlock } from "./rc.js";
-import { currentStatusline, includesPlanhop, installStatusline, settingsPath, uninstallStatusline, type Combine } from "./settings.js";
+import {
+  currentStatusline,
+  firstMemoryHookMention,
+  includesPlanhop,
+  installMemoryHook,
+  installStatusline,
+  memoryHookInstalled,
+  memoryHookSettings,
+  settingsPath,
+  uninstallMemoryHook,
+  uninstallStatusline,
+  type Combine,
+} from "./settings.js";
 import { pickShell, shimScript } from "./shell.js";
 import { previewCombinations, refresh, renderStatusline } from "./statusline.js";
 import { formatTable } from "./table.js";
@@ -37,6 +51,12 @@ Usage:
                                put the previous status line back
   planhop statusline [--append "<cmd>"] [--wrap "<cmd>"] [--usage-app-compat]
                                the status line itself (what --install sets up)
+  planhop allow-memory --install
+                               let Claude Code save its memories on every account without
+                               asking each time (\`planhop add\` and \`planhop shim\` offer this)
+  planhop allow-memory --uninstall
+                               take that out again
+  planhop allow-memory         the hook itself (what --install sets up)
 
 Environment:
   PLANHOP_ACCOUNT=<name>       force an account
@@ -144,6 +164,7 @@ function cmdAdd(name: string | undefined, dirArg: string | undefined): void {
   }
   saveConfig(cfg);
   console.log(`Registered '${name}' -> ${dir}`);
+  if (!isDefaultDir(dir)) offerMemoryHook(cfg, new Set());
   if (!accountEmail(dir)) console.log(`Next: planhop login ${name}`);
 }
 
@@ -209,8 +230,7 @@ function cmdShim(rest: string[]): void {
     return;
   }
   const where = collapseHome(rc.path);
-  const yes = flags.has("--yes") || (canAsk() && ["", "y", "yes"].includes((ask(`Add planhop to ${where} so new terminals use it? [Y/n] `) ?? "n").toLowerCase()));
-  if (!yes) {
+  if (!confirmed(flags, `Add planhop to ${where} so new terminals use it? [Y/n] `)) {
     console.log(`Not changed. To do it yourself, add this at the END of ${where}:`);
     console.log(`  ${rc.line}`);
     return;
@@ -219,6 +239,7 @@ function cmdShim(rest: string[]): void {
   console.log(result === "unchanged" ? `${where} already has planhop's PATH line.` : `${result === "added" ? "Added" : "Updated"} planhop's PATH line at the end of ${where}.`);
   verifyShim(file);
   offerStatusline(flags);
+  offerMemoryHook(loadConfig(), flags);
   console.log(rc.shell === "fish" ? "Open a new terminal (or run: exec fish) to start using it." : `Open a new terminal (or run: source ${where}) to start using it.`);
 }
 
@@ -231,9 +252,97 @@ function offerStatusline(flags: Set<string>): void {
     return;
   }
   if (includesPlanhop(existing)) return;
-  const yes = flags.has("--yes") || (canAsk() && ["", "y", "yes"].includes((ask("Also show the account and its usage in Claude Code's status line? [Y/n] ") ?? "n").toLowerCase()));
-  if (yes) installStatuslineFlow(flags);
+  if (confirmed(flags, "Also show the account and its usage in Claude Code's status line? [Y/n] ")) installStatuslineFlow(flags);
   else console.log("Skipped. Add it later with: planhop statusline --install");
+}
+
+/**
+ * Offer the memory hook when an account needs it and doesn't have it yet.
+ * Without it, Claude Code asks before saving each memory on accounts other
+ * than ~/.claude (see isSharedMemoryWrite).
+ */
+function offerMemoryHook(cfg: Config, flags: Set<string>): void {
+  try {
+    if (memoryHookSettings(cfg).every((file) => memoryHookInstalled(file))) return;
+    firstMemoryHookMention(); // it's being brought up here, so launches needn't
+  } catch {
+    return;
+  }
+  const question =
+    "Claude Code asks before saving each memory on accounts other than ~/.claude, because their projects folder is a link into ~/.claude.\n" +
+    "Add a hook to Claude Code's settings that approves just those saves? [Y/n] ";
+  if (confirmed(flags, question)) installMemoryHookFlow(cfg);
+  else console.log("Claude Code will ask before saving each memory on accounts other than ~/.claude. To stop that: planhop allow-memory --install");
+}
+
+/** Add the memory hook wherever it's needed. */
+function installMemoryHookFlow(cfg: Config): void {
+  const files = memoryHookSettings(cfg);
+  if (files.length === 0) {
+    console.log("Not needed: only accounts other than ~/.claude that share its projects folder are asked about saving memories.");
+    return;
+  }
+  for (const file of files) {
+    const where = collapseHome(file);
+    try {
+      const added = installMemoryHook(file) === "added";
+      console.log(added ? `Claude Code now saves memories on every account without asking (hook added to ${where}).` : `${where} already has planhop's memory hook.`);
+    } catch (e) {
+      log(`not changing ${where}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
+
+/** Every settings file the memory hook could be in: the shared one and each account's own. */
+function allSettingsFiles(cfg: Config): string[] {
+  const files = [settingsPath(), ...listAccounts(cfg).map((a) => join(a.dir, "settings.json"))];
+  return [...new Set(files.filter((f) => existsSync(f)).map(realPath))];
+}
+
+function uninstallMemoryHookFlow(cfg: Config): void {
+  let removed = 0;
+  for (const file of allSettingsFiles(cfg)) {
+    try {
+      if (uninstallMemoryHook(file) === "removed") {
+        removed++;
+        console.log(`Removed planhop's memory hook from ${collapseHome(file)}.`);
+      }
+    } catch (e) {
+      log(`not changing ${collapseHome(file)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (removed === 0) console.log("planhop's memory hook isn't in Claude Code's settings.");
+}
+
+/** Yes if --yes was passed, or the person at the terminal answers yes (the default) to `question`. */
+function confirmed(flags: Set<string>, question: string): boolean {
+  return flags.has("--yes") || (canAsk() && ["", "y", "yes"].includes((ask(question) ?? "n").toLowerCase()));
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  if (!process.stdin.isTTY) for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** The PermissionRequest hook: approves a memory save that Claude Code would otherwise ask about, and stays out of everything else. */
+async function cmdAllowMemory(args: string[]): Promise<void> {
+  const flags = new Set(args.filter((a) => a.startsWith("--")));
+  if (flags.has("--install")) {
+    installMemoryHookFlow(loadConfig());
+    return;
+  }
+  if (flags.has("--uninstall")) {
+    uninstallMemoryHookFlow(loadConfig());
+    return;
+  }
+  let input: unknown;
+  try {
+    input = JSON.parse(await readStdin());
+  } catch {
+    return;
+  }
+  if (isSharedMemoryWrite(input)) console.log(ALLOW);
 }
 
 /** Used by the shim: prints shell code that sets up the environment. */
@@ -328,9 +437,7 @@ async function cmdStatusline(args: string[]): Promise<void> {
     else if (args[i] === "--append") append = args[++i];
     else if (args[i] === "--usage-app-compat") usageAppCompat = true;
   }
-  const chunks: Buffer[] = [];
-  if (!process.stdin.isTTY) for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  console.log(renderStatusline(Buffer.concat(chunks).toString("utf8"), { wrap, append, usageAppCompat }));
+  console.log(renderStatusline(await readStdin(), { wrap, append, usageAppCompat }));
 }
 
 async function main(): Promise<void> {
@@ -357,6 +464,8 @@ async function main(): Promise<void> {
       return cmdRun(afterDashes);
     case "statusline":
       return cmdStatusline(rest);
+    case "allow-memory":
+      return cmdAllowMemory(rest);
     case "refresh":
       return rest[0] ? refresh(rest[0]) : fail("usage: planhop refresh <dir>");
     case undefined:

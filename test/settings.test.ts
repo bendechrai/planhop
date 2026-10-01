@@ -2,7 +2,16 @@ import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeF
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { includesPlanhop, installStatusline, planStatusline, uninstallStatusline } from "../src/settings.js";
+import {
+  includesPlanhop,
+  installMemoryHook,
+  installStatusline,
+  memoryHookInstalled,
+  memoryHookSettings,
+  planStatusline,
+  uninstallMemoryHook,
+  uninstallStatusline,
+} from "../src/settings.js";
 
 let home: string;
 let env: Record<string, string>;
@@ -74,6 +83,67 @@ describe("installStatusline / uninstallStatusline", () => {
   it("refuses to touch a settings.json it can't parse", () => {
     writeFileSync(settingsFile(), "{ broken");
     expect(() => installStatusline("append", env)).toThrow();
+    expect(readFileSync(settingsFile(), "utf8")).toBe("{ broken");
+  });
+});
+
+describe("memoryHookSettings", () => {
+  const both = { a: "~/.claude", b: "~/.claude-b" };
+
+  it("is the shared settings.json once there's an account other than ~/.claude", () => {
+    expect(memoryHookSettings({ accounts: { a: "~/.claude" }, keepSeparate: [] }, env)).toEqual([]);
+    expect(memoryHookSettings({ accounts: both, keepSeparate: [] }, env)).toEqual([settingsFile()]);
+  });
+
+  it("is each other account's own settings.json when that's kept separate", () => {
+    expect(memoryHookSettings({ accounts: both, keepSeparate: ["settings.json"] }, env)).toEqual([join(home, ".claude-b", "settings.json")]);
+  });
+
+  it("is nothing when accounts keep their own projects folder", () => {
+    expect(memoryHookSettings({ accounts: both, keepSeparate: ["projects"] }, env)).toEqual([]);
+  });
+});
+
+describe("installMemoryHook / uninstallMemoryHook", () => {
+  const sound = { matcher: "", hooks: [{ type: "command", command: "afplay glass.aiff" }] };
+  const mine = { matcher: "Write|Edit", hooks: [{ type: "command", command: "planhop allow-memory" }] };
+  const hooks = (): Record<string, unknown> => read().hooks as Record<string, unknown>;
+
+  it("adds the hook next to the hooks already there, once", () => {
+    writeFileSync(settingsFile(), JSON.stringify({ model: "opus", hooks: { Notification: [sound], PermissionRequest: [sound] } }));
+    expect(memoryHookInstalled(settingsFile())).toBe(false);
+    expect(installMemoryHook(settingsFile())).toBe("added");
+    expect(read().model).toBe("opus");
+    expect(hooks()).toEqual({ Notification: [sound], PermissionRequest: [sound, mine] });
+    expect(memoryHookInstalled(settingsFile())).toBe(true);
+    expect(installMemoryHook(settingsFile())).toBe("unchanged");
+    expect(hooks().PermissionRequest).toHaveLength(2);
+  });
+
+  it("creates the settings file when there isn't one", () => {
+    const own = join(home, ".claude-b", "settings.json");
+    expect(installMemoryHook(own)).toBe("added");
+    expect(JSON.parse(readFileSync(own, "utf8"))).toEqual({ hooks: { PermissionRequest: [mine] } });
+  });
+
+  it("takes out only its own hook, however planhop is invoked", () => {
+    const byPath = { matcher: "Write|Edit", hooks: [{ type: "command", command: "/opt/bin/planhop allow-memory" }, sound.hooks[0]] };
+    writeFileSync(settingsFile(), JSON.stringify({ hooks: { Notification: [sound], PermissionRequest: [byPath, mine] } }));
+    expect(uninstallMemoryHook(settingsFile())).toBe("removed");
+    expect(hooks()).toEqual({ Notification: [sound], PermissionRequest: [{ matcher: "Write|Edit", hooks: [sound.hooks[0]] }] });
+    expect(uninstallMemoryHook(settingsFile())).toBe("not-installed");
+  });
+
+  it("leaves no empty hooks behind", () => {
+    writeFileSync(settingsFile(), JSON.stringify({ model: "opus" }));
+    installMemoryHook(settingsFile());
+    uninstallMemoryHook(settingsFile());
+    expect(read()).toEqual({ model: "opus" });
+  });
+
+  it("refuses to touch a settings.json it can't parse", () => {
+    writeFileSync(settingsFile(), "{ broken");
+    expect(() => installMemoryHook(settingsFile())).toThrow();
     expect(readFileSync(settingsFile(), "utf8")).toBe("{ broken");
   });
 });
