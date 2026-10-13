@@ -1,9 +1,11 @@
 name: CI
 
+# Manual trigger only: the gates run locally in .githooks/pre-push
+# (bin/preflight.sh) so no hosted minutes are spent per push. Run this by hand
+# before a release when a change could behave differently on macOS, which the
+# local gates cannot cover.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:

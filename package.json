@@ -10,7 +10,8 @@
     "prepack": "pnpm run docs",
     "bump-tap": "scripts/bump-tap.sh",
     "docs": "pnpm build && node scripts/docs.mjs",
-    "docs:serve": "python3 -m http.server 8765 --bind 127.0.0.1 --directory docs"
+    "docs:serve": "python3 -m http.server 8765 --bind 127.0.0.1 --directory docs",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm audit --audit-level high"
   },
   "keywords": [
     "claude-code",

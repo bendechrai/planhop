@@ -159,9 +159,12 @@ Bump `version` in `package.json`, commit, and push a matching tag (`git tag v0.3
 
 ```sh
 pnpm install
-pnpm lint && pnpm typecheck && pnpm test
+bin/setup-git-hooks.sh   # once per clone
+pnpm run verify          # lint, typecheck, tests, audit
 pnpm build && node dist/cli.js status
 ```
+
+The pre-push hook runs every gate in [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) against a clean export of the commit being pushed (`bin/preflight.sh`, which needs Docker). Hosted CI only runs when triggered by hand.
 
 ## License
 

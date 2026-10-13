@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# planhop pre-push hook
+#
+# Hosted CI is manual-trigger only, so every Definition of Done gate runs
+# here instead, against the commit being pushed rather than the working
+# tree. For each non-deleted ref on stdin it runs:
+#
+#     bin/preflight.sh <local-sha>
+#
+# which exports that commit with `git archive` and runs, in order:
+# install, verify (lint + typecheck + vitest + pnpm audit, on node 20 and
+# 24, plus the docs/choose.js drift check) and security (gitleaks,
+# osv-scanner, semgrep).
+#
+# To install:
+#   bin/setup-git-hooks.sh
+#
+# To bypass in a real emergency:
+#   git push --no-verify   # be prepared to justify it
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GRN='\033[0;32m'
+DIM='\033[2m'
+RST='\033[0m'
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# git feeds one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+checked_trees=""
+pushed=0
+
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  [ -n "${local_sha:-}" ] || continue
+
+  # All-zero sha means "delete this remote ref" - there is nothing to test.
+  case "$local_sha" in
+    *[!0]*) ;;
+    *)
+      echo -e "${DIM}pre-push: ${local_ref:-<deleted ref>} is a delete - nothing to check${RST}"
+      continue
+      ;;
+  esac
+
+  # A release tag points at a tag object; only a ref that peels to a commit
+  # has gates to run.
+  if ! commit="$(git rev-parse --verify --quiet "${local_sha}^{commit}")"; then
+    echo -e "${DIM}pre-push: ${local_ref:-$local_sha} does not point at a commit - skipping${RST}"
+    continue
+  fi
+
+  # `git push --follow-tags` sends main and its release tag together; one
+  # run covers both.
+  tree="$(git rev-parse "${commit}^{tree}")"
+  case " $checked_trees " in
+    *" $tree "*)
+      echo -e "${DIM}pre-push: ${local_ref:-$commit} has the same tree as a ref already checked - skipping${RST}"
+      continue
+      ;;
+  esac
+  checked_trees="$checked_trees $tree"
+
+  echo -e "${GRN}pre-push: running the gates for ${local_ref:-$commit} ($(git rev-parse --short "$commit"))${RST}"
+  if ! bin/preflight.sh "$commit"; then
+    echo -e "${RED}pre-push: FAIL${RST} - preflight failed for ${local_ref:-$commit}. Push refused." >&2
+    exit 1
+  fi
+  pushed=$((pushed + 1))
+done
+
+if [ "$pushed" -eq 0 ]; then
+  echo -e "${DIM}pre-push: nothing with gates to run${RST}"
+fi
+
+echo -e "${GRN}pre-push: all gates passed.${RST}"
